@@ -2,7 +2,7 @@
 title: "rat_sighting_time_trend"
 author: "Zihan Xiong"
 date: "2025-11-11"
-output: html_document
+output: github_document
 ---
 
 ```{r}
@@ -66,23 +66,39 @@ ggplot(rat_cleaned,
 
 ```
 
+```{r}
+ggplot(rat_cleaned, aes(x = month, y = rat_sighting_count, group = year, color = factor(year))) +
+  geom_line(size = 1) +
+  geom_point() +
+  labs(
+    title = "Monthly Rat Sightings in NYC (2019–2024)",
+    x = "Month",
+    y = "Number of Rat Sightings",
+    color = "Year"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+```
 
 ```{r}
-library(plotly)
+# library(plotly) will be used when conducting html_document
 
-plot_ly(
-  rat_cleaned,
-  x = ~month,
-  y = ~rat_sighting_count,
-  color = ~factor(year),
-  type = 'scatter',
-  mode = 'lines+markers'
-) %>%
-  layout(
-    title = "Monthly Rat Sightings in NYC (2019–2024)",
-    xaxis = list(title = "Month"),
-    yaxis = list(title = "Number of Rat Sightings")
-  )
+#plot_ly(
+#  rat_cleaned,
+# x = ~month,
+ # y = ~rat_sighting_count,
+  #color = ~factor(year),
+  #type = 'scatter',
+  #mode = 'lines+markers'
+#) %>%
+ # layout(
+  #  title = "Monthly Rat Sightings in NYC (2019–2024)",
+  #  xaxis = list(title = "Month"),
+  #  yaxis = list(title = "Number of Rat Sightings")
+  #)
 
 ```
 
