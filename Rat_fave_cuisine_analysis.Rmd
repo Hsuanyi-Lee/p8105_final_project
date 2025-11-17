@@ -2,7 +2,9 @@
 title: "Rat_fave_cuisine_analysis"
 author: "HsuanYi Lee (hl3858)"
 date: "2025-11-17"
-output: html_document
+output:
+  github_document: default
+  html_document: default
 ---
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
