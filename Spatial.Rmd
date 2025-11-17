@@ -1,0 +1,263 @@
+---
+title: "Spatial"
+author: "wd2311"
+date: "2025-11-17"
+output: html_document
+---
+
+## Library Set Up
+```{r}
+library(tidyverse)
+library(lubridate)
+library(httr)
+library(jsonlite)
+library(tidyr)
+library(stringr)
+library(purrr)
+
+```
+
+
+## Clean Rat Data
+```{r}
+rats_raw <- readr::read_csv("data/rat_sighting.csv") %>%
+  # 原表里有 "Created Date" 和 "created_date" 两列
+  # 这里先把 ISO 那列重命名一下，后面再 clean_names
+  rename(created_date_iso = created_date)
+
+## 2. 统一列名为 snake_case ----
+rats_clean <- rats_raw %>%
+  janitor::clean_names()   # e.g. "Unique Key" -> "unique_key", "Created Date" -> "created_date"
+）
+# names(rats_clean)
+
+## 3. 时间变量整理：用 created_date_iso 作为主时间 ----
+rats_clean <- rats_clean %>%
+  mutate(
+    ## 3.1 使用 ISO 列（created_date_iso）作为主时间，先按 UTC 解析，再转纽约时间
+    created_datetime_utc = lubridate::ymd_hms(created_date_iso, tz = "UTC"),
+    created_datetime_ny  = lubridate::with_tz(created_datetime_utc, tzone = "America/New_York"),
+    created_date         = as.Date(created_datetime_ny),
+
+    ## 3.2 其他几个 311 提供的时间字段，用文本形式解析（可选，但建议弄成时间）
+    closed_date = parse_date_time(
+      closed_date,
+      orders = "Y b d I:M:S p",
+      tz = "America/New_York"
+    ),
+    due_date = parse_date_time(
+      due_date,
+      orders = "Y b d I:M:S p",
+      tz = "America/New_York"
+    ),
+    resolution_action_updated_date = parse_date_time(
+      resolution_action_updated_date,
+      orders = "Y b d I:M:S p",
+      tz = "America/New_York"
+    ),
+
+    ## 3.3 衍生出一些常用时间变量）
+    created_year  = year(created_date),
+    created_month = floor_date(created_date, unit = "month")
+  )
+
+## 4. 按日期筛选：只保留 2019-01-01 ~ 2024-12-31 ----
+## 实际上，这个文件的数据只到 2019-10-04，所以筛完就是 2019 年的 13k 多条
+rats_clean <- rats_clean %>%
+  filter(
+    created_date >= as.Date("2019-01-01"),
+    created_date <= as.Date("2024-12-31")
+  )
+
+## 5. Borough 清洗：把 "Unspecified" -> NA ----
+rats_clean <- rats_clean %>%
+  mutate(
+    borough = na_if(borough, "Unspecified"),
+    borough = if_else(borough == "", NA_character_, borough)
+  )
+
+## 6. Zip 清洗：转字符、提取 5 位数字、格式统一 ----
+rats_clean <- rats_clean %>%
+  mutate(
+    incident_zip = as.character(incident_zip),
+    incident_zip = stringr::str_extract(incident_zip, "\\d+"),
+    incident_zip = stringr::str_pad(incident_zip, width = 5, side = "left", pad = "0"),
+    incident_zip = if_else(
+      stringr::str_detect(incident_zip, "^[0-9]{5}$"),
+      incident_zip,
+      NA_character_
+    )
+  )
+
+## 7. 经纬度 & 空间边界清洗 ----
+rats_clean <- rats_clean %>%
+  # 去掉没有经纬度的记录（做空间分析一般用不到）
+  filter(!is.na(latitude), !is.na(longitude)) %>%
+  # 保守一点，再按 NYC 合理范围过滤（是防止极端值）
+  filter(
+    dplyr::between(latitude, 40, 41),
+    dplyr::between(longitude, -75, -72)
+  )
+
+
+## 8. 精简的分析用版本 ----
+rats_clean_min <- rats_clean %>%
+  select(
+    unique_key,
+    created_datetime_ny, created_date, created_year, created_month,
+    borough, city, incident_zip, community_board,
+    location_type, address_type, facility_type,
+    status, closed_date,
+    latitude, longitude
+  )
+
+## 9. 看一下结果规模（行数/年份分布等）----
+rats_clean %>% 
+  count(created_year)
+
+```
+## Import Inspection Data
+```{r}
+get_all_inspections = function(url) {
+  
+  all_inspections = vector("list", length = 0)
+  
+  loop_index = 1
+  chunk_size = 50000
+  DO_NEXT = TRUE
+  
+  while (DO_NEXT) {
+    message("Getting data, page ", loop_index)
+    
+    all_inspections[[loop_index]] = 
+      GET(url,
+          query = list(`$order` = "zipcode",
+                       `$limit` = chunk_size,
+                       `$offset` = as.integer((loop_index - 1) * chunk_size)
+                       )
+          ) %>%
+      content("text") %>%
+      fromJSON() %>%
+      as_tibble()
+    
+    DO_NEXT = dim(all_inspections[[loop_index]])[1] == chunk_size
+    loop_index = loop_index + 1
+  }
+  
+  all_inspections
+  
+}
+
+url = "https://data.cityofnewyork.us/resource/43nn-pn8j.json"
+
+nyc_inspections = 
+  get_all_inspections(url) %>%
+  bind_rows() 
+
+
+```
+
+```{r}
+saveRDS(nyc_inspections, "data/nyc_inspections.rds")
+```
+
+
+
+## Inspection Data Cleaning
+```{r}
+## 1. 统一列名 ----
+nyc_inspections_clean <- nyc_inspections %>%
+  janitor::clean_names()
+
+## 2. 如果有 location_1 这种 list 列，把经纬度展开 ----
+if ("location_1" %in% names(nyc_inspections_clean) &&
+    is.list(nyc_inspections_clean$location_1)) {
+  
+  nyc_inspections_clean <- nyc_inspections_clean %>%
+    tidyr::unnest_wider(location_1, names_sep = "_") %>%
+    # 一般会展开出 location_1_latitude / location_1_longitude / location_1_human_address
+    rename(
+      latitude  = location_1_latitude,
+      longitude = location_1_longitude
+    )
+}
+
+## 3. 处理日期列：inspection_date / grade_date / record_date ----
+parse_dt <- function(x) {
+  lubridate::parse_date_time(
+    x,
+    orders = c("Ymd HMS", "Ymd HMSOS", "mdY HMS", "mdY"),
+    tz = "America/New_York"
+  )
+}
+
+nyc_inspections_clean <- nyc_inspections_clean %>%
+  mutate(
+    inspection_datetime = parse_dt(inspection_date),
+    inspection_date     = as_date(inspection_datetime),
+    
+    grade_datetime  = parse_dt(grade_date),
+    grade_date      = as_date(grade_datetime),
+    
+    record_datetime = parse_dt(record_date),
+    record_date     = as_date(record_datetime),
+    
+    inspection_year  = year(inspection_date),
+    inspection_month = floor_date(inspection_date, unit = "month")
+  ) %>%
+  # 去掉 inspection_date 缺失 & 1900-01-01（官方说明表示“新店未检查”）
+  filter(
+    !is.na(inspection_date),
+    inspection_date != as_date("1900-01-01")
+  )
+
+## 4. 时间范围筛选（和 rat_sighting 对齐 2019-01-01 ~ 2024-12-31）----
+nyc_inspections_clean <- nyc_inspections_clean %>%
+  filter(
+    inspection_date >= as_date("2019-01-01"),
+    inspection_date <= as_date("2024-12-31")
+  )
+
+## 5. 清洗 BORO / ZIPCODE 等字符列 ----
+nyc_inspections_clean <- nyc_inspections_clean %>%
+  mutate(
+    camis = as.character(camis),
+
+    boro = na_if(boro, "Missing"),
+    boro = if_else(boro == "", NA_character_, boro),
+
+    zipcode = as.character(zipcode),
+    zipcode = str_extract(zipcode, "\\d+"),
+    zipcode = str_pad(zipcode, width = 5, side = "left", pad = "0"),
+    zipcode = if_else(str_detect(zipcode, "^[0-9]{5}$"), zipcode, NA_character_),
+
+    score = as.numeric(score),
+    
+    grade         = factor(grade),
+    critical_flag = factor(critical_flag),
+    cuisine_description = as.factor(cuisine_description)
+  )
+
+## 6. 经纬度如果存在，转为 numeric + 合理范围过滤（可选）----
+if ("latitude" %in% names(nyc_inspections_clean)) {
+  nyc_inspections_clean <- nyc_inspections_clean %>%
+    mutate(
+      latitude  = as.numeric(latitude),
+      longitude = as.numeric(longitude)
+    ) %>%
+    filter(
+      is.na(latitude) | dplyr::between(latitude, 40, 41),
+      is.na(longitude) | dplyr::between(longitude, -75, -72)
+    )
+}
+
+## 7. 防御性：把残余的 list 列都去掉或转成字符，防止以后 write_csv 再报错 ----
+list_cols <- names(nyc_inspections_clean)[map_lgl(nyc_inspections_clean, is.list)]
+
+if (length(list_cols) > 0) {
+  nyc_inspections_clean <- nyc_inspections_clean %>%
+    select(-all_of(list_cols))
+}
+
+```
+
