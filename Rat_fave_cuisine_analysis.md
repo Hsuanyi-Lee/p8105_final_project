@@ -1,12 +1,14 @@
-Rat_fave_cuisine_analysis
+Rat Favorite Cuisine Analysis
 ================
 HsuanYi Lee (hl3858)
 2025-11-17
 
 ``` r
+# 1. Load Dataset
 restaurant <- readRDS("~/p8105_final_project/data/restaurant_clean.rds")
 rat_data <- readRDS("~/p8105_final_project/data/rat_data_cleaned.rds")
 
+# 2. Standardize ZIP code types 
 restaurant <- restaurant %>% mutate(ZIPCODE_fill = as.character(ZIPCODE_fill))
 rat_data <- rat_data %>% mutate(Zip = as.character(Zip))
 ```
@@ -14,6 +16,9 @@ rat_data <- rat_data %>% mutate(Zip = as.character(Zip))
 ## Create Cuisine Summary
 
 ``` r
+# 1. Create Cuisine-Level Summary**
+### We aggregate restaurant count and rat sightings across all ZIP codes for each cuisine.
+
 cuisine_summary <- restaurant %>%
   select(CUISINE_CATEGORY, ZIPCODE_fill) %>%
   filter(ZIPCODE_fill != "") %>%
@@ -46,7 +51,7 @@ sd_x <- sd(x)
 }
 ```
 
-## Results: Restaurants
+## Restaurant Count Distribution
 
 ``` r
 restaurant_stats <- cuisine_summary %>%
@@ -68,7 +73,7 @@ restaurant_stats
     ##   <int>  <dbl>  <dbl>  <dbl> <int> <int>    <dbl>     <dbl>
     ## 1    20 10171.   6050 10492.   914 38198     1.22   0.00124
 
-## Results: Rats
+## Rat Sightings Distribution
 
 ``` r
 rat_stats <- cuisine_summary %>%
@@ -90,7 +95,7 @@ rat_stats
     ##   <int>  <dbl>  <dbl>  <dbl> <int>  <int>    <dbl>     <dbl>
     ## 1    20 96630. 97886. 28466. 54080 133169   -0.140    0.0511
 
-## Histograms
+## Distribution Histograms
 
 ``` r
 p1 <- ggplot(cuisine_summary, aes(x = total_restaurants)) +
@@ -108,19 +113,23 @@ p1 + p2
 
 ![](Rat_fave_cuisine_analysis_files/figure-gfm/unnamed-chunk-6-1.png)<!-- -->
 
-## Rat Sightings Ranking by Cuisine (Adjusted for restaurants)
+## Rat Sightings Ranking by Cuisine (Adjusted for Restaurant Count)
 
 ``` r
+# 1. Count restaurants per Cuisine × ZIP
 cuisine_rat_analysis <- restaurant %>%
 select(CUISINE_CATEGORY, ZIPCODE_fill) %>%
 group_by(CUISINE_CATEGORY, ZIPCODE_fill) %>%
 summarise(Restaurant_Count = n(), .groups="drop") %>%
+  
+# 2. Join ZIP-level rat counts
 left_join(
 rat_data %>% group_by(Zip) %>% summarise(Rat_Count = n()),
 by = c("ZIPCODE_fill" = "Zip")
 ) %>%
 mutate(Rat_Count = replace_na(Rat_Count, 0))
 
+# 3. Aggregate totals per cuisine
 log_standardized_ranking <- cuisine_rat_analysis %>%
 group_by(CUISINE_CATEGORY) %>%
 summarise(
@@ -129,17 +138,26 @@ Total_Restaurants = sum(Restaurant_Count),
 Unique_ZIPs = n_distinct(ZIPCODE_fill),
 Rats_per_Restaurant = Total_Rats / Total_Restaurants
 ) %>%
+  
+# 4. Filter out cuisines with small sample sizes
 filter(Total_Restaurants >= 50) %>%
+  
+# 5. Standardize and compute log-standardized ratio
 mutate(
 Log_Restaurants = log(Total_Restaurants + 1),
 Standardized_Rats = scale(Total_Rats)[,1],
 Standardized_Log_Restaurants = scale(Log_Restaurants)[,1],
 Log_Standardized_Ratio = Standardized_Rats / Standardized_Log_Restaurants,
+
+# 6. Normalize ratio to 0–1 range
 Normalized_Ratio = (Log_Standardized_Ratio - min(Log_Standardized_Ratio)) /
 (max(Log_Standardized_Ratio) - min(Log_Standardized_Ratio))
 ) %>%
+  
+# 7. Final ranking (highest to lowest)
 arrange(desc(Normalized_Ratio))
 
+# 8. Output cleaned table
 log_standardized_ranking %>%
 select(CUISINE_CATEGORY, Total_Rats, Total_Restaurants, Normalized_Ratio) %>%
 print(n = Inf)
@@ -169,9 +187,10 @@ print(n = Inf)
     ## 19 European                             93160              7961            0.310
     ## 20 Spanish                             106253              4926            0
 
-## Rat Sightings Ranking (2.0 ZIP Weighted)
+## Rat Sightings Ranking (ZIP-Weighted Method)
 
 ``` r
+# 1. Aggregate ZIP-level restaurant + rat counts
 zip_weighted_ranking <- cuisine_rat_analysis %>%
 group_by(CUISINE_CATEGORY) %>%
 summarise(
@@ -179,16 +198,28 @@ Total_Rats = sum(Rat_Count),
 Total_Restaurants = sum(Restaurant_Count),
 Unique_ZIPs = n_distinct(ZIPCODE_fill)
 ) %>%
+
+# 2. Require cuisine to appear in enough restaurants
 filter(Total_Restaurants >= 50) %>%
+  
+# 3. Calculate ZIP-weighted rat counts
 mutate(
 Weighted_Rats = Total_Rats * Unique_ZIPs,
 Log_Restaurants = log(Total_Restaurants + 1),
+
+# 4. Standardize weighted rats and logged restaurants
 Std_Weighted = scale(Weighted_Rats)[,1],
 Std_Log = scale(Log_Restaurants)[,1],
+
+# 5. Compute ZIP-weighted log-standardized ratio
 Log_Standardized_Ratio = Std_Weighted / Std_Log,
+
+# 6. Normalize ratio to 0 - 1 range
 Normalized_Ratio = (Log_Standardized_Ratio - min(Log_Standardized_Ratio)) /
 (max(Log_Standardized_Ratio) - min(Log_Standardized_Ratio))
 ) %>%
+
+# 7. Rank cuisines by ZIP-weighted rat risk
 arrange(desc(Normalized_Ratio))
 
 zip_weighted_ranking %>%
