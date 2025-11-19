@@ -48,15 +48,24 @@ control and food safety monitoring in urban areas.
 
 ### Intended Final Products
 
-1.  **Spatial clustering analysis**: Identify and visualize geographic
-    hotspots where rat sightings and restaurant sanitation violations
-    are spatially concentrated across New York City.
-2.  **Temporal trend & seasonality**: Identify and visualize time series
-    of rats sighting and restaurant sanitation violations across NYC
-    (For example, Summer temperature and rats activities).
-3.  **Category-level comparisons** : Explore, compare, and visualize the
-    association between the inspection score of different types of
-    cuisines and the rat sighting of near-by blocks.
+1.  **Spatial clustering analysis**: Examine whether rat sightings are
+    spatially co-located with neighborhoods that exhibit a high
+    concentration of restaurant sanitation violations, which we will
+    investigate using spatial joins and hotpots clustering analysis.
+2.  **Temporal trend & seasonality**: Explore the extent to which
+    seasonal temperature patterns drive increases in rat activity, and
+    whether these fluctuations are subsequently followed by higher rates
+    of restaurant violations; to do this, we will analyze seasonal
+    trends and evaluate potential lagged correlations.
+3.  **Category-level comparisons** : Investigate whether certain cuisine
+    types are more prone to pest-related violations—such as rodents—by
+    comparing violation rates across cuisine categories using ANOVA or
+    regression modeling.
+4.  **Adjusted comparison**: based on the cuisine comparison, we
+    consider whether neighborhood-level socioeconomic factors, such as
+    poverty rate or population density, mediate the relationship between
+    rat sightings and restaurant sanitation outcomes, in order to better
+    understand possible underlying structural influences.
 
 ### Anticipated Data Source
 
@@ -64,7 +73,7 @@ control and food safety monitoring in urban areas.
     code, street name, incident created date
 2.  NYC Restaurants Inspections Results, which mainly include zip code,
     street, cuisine description, inspection date, score
-3.  (potential) NYC geographic boundaries
+3.  ACS 5-Year Estimates (American Community Survey)
 4.  some other datasets as project going on
 
 ### Planned Analyses/ Visualizations
@@ -91,8 +100,11 @@ counts and average inspection scores (plotly) -Explore seasonal patterns
 (e.g., summer peaks) and potential time-lag relationships between rat
 activity and sanitation outcomes.
 
-3.  **Statistical Modelling** (potential?) -Examine correlations between
-    average violation scores and rat-sighting rates.
+3.  **Statistical Modelling** (potential?) -Conduct simple linear
+    regression to analyze linearity between restaurant violation and
+    rat-sighting rates. -Report coefficients, t-statistics p-values, and
+    R squared to assess whether the linear relationship is statistically
+    significant.
 
 ### Coding Challenges
 

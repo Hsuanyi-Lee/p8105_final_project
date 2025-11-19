@@ -1,0 +1,104 @@
+---
+title: "rat_sighting_time_trend"
+author: "Zihan Xiong"
+date: "2025-11-11"
+output: github_document
+---
+
+```{r}
+library(tidyverse)
+library(readr)
+library(janitor)
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+```
+
+```{r}
+rat=read_csv("./data/rat_sighting_raw1.csv", na=c("NA","","0"))|>
+  janitor::clean_names()
+glimpse(rat)
+rat
+```
+```{r}
+rat1= rat |>
+  mutate(
+    created_date=parse_date_time(created_date, orders = "Y b d I:M:S p") 
+  ) 
+rat1
+```
+
+```{r}
+rat_cleaned = rat1 |>
+  filter(
+    year(created_date) >=2019 & year(created_date) <=2024
+  ) |>
+  mutate(
+    year=year(created_date),
+    month = month(created_date, label = TRUE, abbr = FALSE)
+  )|>
+  group_by(year,month) |>
+  summarise(rat_sighting_count = n())
+rat_cleaned
+```
+
+```{r}
+rat_cleaned$month <- factor(
+  rat_cleaned$month,
+  levels = month.name,
+  ordered = TRUE
+)
+
+ggplot(rat_cleaned, 
+       aes(x = month, y = rat_sighting_count)) +
+  geom_line(aes(group = year, colour = factor(year)), size = 1) +
+  geom_point(aes(colour = factor(year)), size = 2) +
+  facet_wrap(~ year, ncol = 2) +
+  scale_color_brewer(palette = "Dark2") +
+  labs(
+    title = "Monthly Rat Sightings in NYC (2019–2024)",
+    x="Month",
+    y="Number of Rat Sightings",
+    color="Year"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+```{r}
+ggplot(rat_cleaned, aes(x = month, y = rat_sighting_count, group = year, color = factor(year))) +
+  geom_line(size = 1) +
+  geom_point() +
+  labs(
+    title = "Monthly Rat Sightings in NYC (2019–2024)",
+    x = "Month",
+    y = "Number of Rat Sightings",
+    color = "Year"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+```
+
+```{r}
+# library(plotly) will be used when conducting html_document
+
+#plot_ly(
+#  rat_cleaned,
+# x = ~month,
+ # y = ~rat_sighting_count,
+  #color = ~factor(year),
+  #type = 'scatter',
+  #mode = 'lines+markers'
+#) %>%
+ # layout(
+  #  title = "Monthly Rat Sightings in NYC (2019–2024)",
+  #  xaxis = list(title = "Month"),
+  #  yaxis = list(title = "Number of Rat Sightings")
+  #)
+
+```
+
